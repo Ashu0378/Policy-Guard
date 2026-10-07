@@ -1,0 +1,27 @@
+{
+  "name": "policy-guard-security-scanner",
+  "version": "1.0.0",
+  "description": "Production-Ready Web Security Header & Cookie Scanner (MERN Stack)",
+  "main": "server/server.js",
+  "scripts": {
+    "install:server": "cd server && npm install",
+    "install:client": "cd client && npm install",
+    "install:all": "npm run install:server && npm run install:client",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "start": "cd server && npm start"
+  },
+  "keywords": [
+    "security-scanner",
+    "headers",
+    "cookies",
+    "csp",
+    "hsts",
+    "express",
+    "react",
+    "vite",
+    "tailwind"
+  ],
+  "author": "Antigravity Principal Security Engineer",
+  "license": "MIT"
+}
