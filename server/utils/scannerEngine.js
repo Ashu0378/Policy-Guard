@@ -107,81 +107,93 @@ async function scanTarget(inputUrl) {
   let redirectsCount = 0;
   const maxRedirects = 5;
 
-  const https = require('https');
-  const http = require('http');
-  const instance = axios.create({
-    timeout: 15000,
-    maxRedirects: 0, // Manual redirect handling to record history
-    validateStatus: () => true, // Accept all HTTP status codes
-    httpsAgent: new https.Agent({ rejectUnauthorized: false }), // Allow scanning domains with bad SSL certificates
-    httpAgent: new http.Agent({ keepAlive: false }), // Prevent hanging on http keep-alive
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9'
-    }
-  });
+  // Use native fetch to avoid IPv6 hang issues with Axios
+  // Temporarily disable TLS verification for this scope to allow scanning sites with bad certs
+  const originalTlsReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-  const sanitizeHeaders = (headers) => {
-    const sanitized = {};
-    Object.keys(headers).forEach(k => {
-      const val = headers[k];
-      let strVal = Array.isArray(val) ? val.join(', ') : String(val);
-      const lowerK = k.toLowerCase();
-      if (['authorization', 'cookie', 'x-api-key', 'session'].includes(lowerK)) {
-        strVal = '*** REDACTED ***';
-      } else if (lowerK === 'set-cookie') {
-        // Redact values but keep directives for visibility
-        strVal = strVal.replace(/([^=;\s]+)=([^;]+)/g, (match, key) => {
-           if (['domain', 'path', 'expires', 'max-age', 'samesite'].includes(key.toLowerCase())) {
-               return match;
-           }
-           return `${key}=***REDACTED***`;
+  try {
+    while (redirectsCount <= maxRedirects) {
+      try {
+        const stepStartTime = Date.now();
+        
+        // Setup AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        response = await fetch(currentUrl, {
+          method: 'GET',
+          redirect: 'manual',
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
         });
-      }
-      sanitized[k] = strVal;
-    });
-    return sanitized;
-  };
+        
+        clearTimeout(timeoutId);
+        
+        const stepDuration = Date.now() - stepStartTime;
+        
+        // Convert Fetch Headers object to a plain key-value object
+        const responseHeaders = {};
+        response.headers.forEach((value, key) => {
+          if (responseHeaders[key]) {
+            responseHeaders[key] = `${responseHeaders[key]}, ${value}`;
+          } else {
+            responseHeaders[key] = value;
+          }
+        });
 
-  while (redirectsCount <= maxRedirects) {
-    try {
-      const stepStartTime = Date.now();
-      response = await instance.get(currentUrl);
-      const stepDuration = Date.now() - stepStartTime;
-      
-      const isRedirect = [301, 302, 303, 307, 308].includes(response.status) && response.headers.location;
-      
-      redirectHistory.push({
-        url: currentUrl,
-        status: response.status,
-        location: response.headers.location || null,
-        headers: sanitizeHeaders(response.headers),
-        isFinal: !isRedirect,
-        durationMs: stepDuration
-      });
-
-      if (isRedirect) {
-        const nextUrl = new URL(response.headers.location, currentUrl).href;
-        await normalizeAndValidateUrl(nextUrl);
-        currentUrl = nextUrl;
-        redirectsCount++;
-        if (redirectsCount > maxRedirects) {
-          break;
+        // Set-Cookie requires special handling in Fetch API since they can't be joined by commas
+        const setCookieHeaders = response.headers.getSetCookie ? response.headers.getSetCookie() : (responseHeaders['set-cookie'] ? [responseHeaders['set-cookie']] : []);
+        if (setCookieHeaders.length > 0) {
+           responseHeaders['set-cookie'] = setCookieHeaders;
         }
-      } else {
-        break; // Final response
+        
+        const isRedirect = [301, 302, 303, 307, 308].includes(response.status) && responseHeaders.location;
+        
+        redirectHistory.push({
+          url: currentUrl,
+          status: response.status,
+          location: responseHeaders.location || null,
+          headers: sanitizeHeaders(responseHeaders),
+          isFinal: !isRedirect,
+          durationMs: stepDuration
+        });
+
+        if (isRedirect) {
+          const nextUrl = new URL(responseHeaders.location, currentUrl).href;
+          await normalizeAndValidateUrl(nextUrl);
+          currentUrl = nextUrl;
+          redirectsCount++;
+          if (redirectsCount > maxRedirects) {
+            break;
+          }
+        } else {
+          // Attach our parsed headers to the response object so the rest of the code works
+          response.parsedHeaders = responseHeaders;
+          break; // Final response
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw new Error(`Connection Timeout: Request to ${currentUrl} timed out.`);
+        } else if (err.cause?.code === 'ENOTFOUND') {
+          throw new Error(`Target Unreachable: Hostname could not be found.`);
+        } else if (err.cause?.code === 'ECONNREFUSED') {
+          throw new Error(`Connection Refused: Target port is closed.`);
+        } else {
+          throw new Error(`Network Error: ${err.message}`);
+        }
       }
-    } catch (err) {
-      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-        throw new Error(`Connection Timeout: Request to ${currentUrl} timed out.`);
-      } else if (err.code === 'ENOTFOUND') {
-        throw new Error(`Target Unreachable: Hostname could not be found.`);
-      } else if (err.code === 'ECONNREFUSED') {
-        throw new Error(`Connection Refused: Target port is closed.`);
-      } else {
-        throw new Error(`Network Error: ${err.message}`);
-      }
+    }
+  } finally {
+    // Restore TLS setting
+    if (originalTlsReject === undefined) {
+      delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    } else {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTlsReject;
     }
   }
 
@@ -192,11 +204,10 @@ async function scanTarget(inputUrl) {
   // Allow scanning even if it's a 4xx or 5xx, but flag it
   if (response.status >= 400) {
     // Only throw if it's WAF block or auth required that completely prevents scanning
-    // But since the user wants to scan ANY response headers, we shouldn't throw error anymore unless connection failed.
   }
 
   const durationMs = Date.now() - globalStartTime;
-  const rawHeaders = response.headers;
+  const rawHeaders = response.parsedHeaders;
   
   const setCookieHeader = response.headers['set-cookie'] || [];
   const parsedCookies = setCookieParser.parse(setCookieHeader, { decodeValues: true });
