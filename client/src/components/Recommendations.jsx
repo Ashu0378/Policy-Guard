@@ -16,24 +16,32 @@ export default function Recommendations({ headerResults, currentScore }) {
         Priority Recommendations
       </h3>
       <div className="space-y-3">
-        {missingHeaders.map(h => (
-          <div key={h.key} className="flex items-start gap-3 bg-slate-800/50 p-3 rounded-lg border border-rose-500/20">
-            <span className="mt-0.5 text-xs font-bold px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded">HIGH</span>
-            <div>
-              <p className="text-sm font-medium text-slate-200">Configure <span className="font-mono text-emerald-300">{h.name}</span></p>
-              <p className="text-xs text-slate-400 mt-1">{h.recommendation}</p>
-            </div>
-          </div>
-        ))}
-        {warnHeaders.map(h => (
-          <div key={h.key} className="flex items-start gap-3 bg-slate-800/50 p-3 rounded-lg border border-amber-500/20">
-            <span className="mt-0.5 text-xs font-bold px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded">MEDIUM</span>
-            <div>
-              <p className="text-sm font-medium text-slate-200">Strengthen <span className="font-mono text-emerald-300">{h.name}</span></p>
-              <p className="text-xs text-slate-400 mt-1">{h.recommendation}</p>
-            </div>
-          </div>
-        ))}
+        {[...missingHeaders, ...warnHeaders]
+          .sort((a, b) => {
+            const levels = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+            return (levels[b.severity] || 0) - (levels[a.severity] || 0);
+          })
+          .map(h => {
+            const badgeColor = 
+              h.severity === 'CRITICAL' || h.severity === 'HIGH' ? 'bg-rose-500/20 text-rose-400 border-rose-500/20' : 
+              h.severity === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border-amber-500/20' : 
+              'bg-blue-500/20 text-blue-400 border-blue-500/20';
+
+            return (
+              <div key={h.key} className={`flex items-start gap-3 bg-slate-800/50 p-3 rounded-lg border ${h.severity === 'CRITICAL' || h.severity === 'HIGH' ? 'border-rose-500/20' : 'border-amber-500/20'}`}>
+                <span className={`mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${badgeColor}`}>
+                  {h.severity}
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-slate-200">
+                    {h.status === 'MISSING' ? 'Configure ' : 'Strengthen '} 
+                    <span className="font-mono text-emerald-300">{h.name}</span>
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">{h.recommendation}</p>
+                </div>
+              </div>
+            );
+          })}
       </div>
       <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between">
         <span className="text-sm text-slate-400">Potential score after fixes</span>

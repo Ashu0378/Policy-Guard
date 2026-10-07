@@ -8,6 +8,9 @@ import RawHeadersModal from './components/RawHeadersModal';
 import ScanHistory from './components/ScanHistory';
 import KnowledgeBase from './components/KnowledgeBase';
 import RedirectChain from './components/RedirectChain';
+import SecurityFindings from './components/SecurityFindings';
+import ScanLimitations from './components/ScanLimitations';
+import Recommendations from './components/Recommendations';
 import { ShieldCheck, Lock, Download, ShieldAlert, CheckCircle2, BookOpen, Layers } from 'lucide-react';
 
 export default function App() {
@@ -128,15 +131,22 @@ export default function App() {
             {/* Scan Dashboard */}
             {scanResult && (
               <div className="animate-fade-in">
-                <RedirectChain redirects={scanResult.redirectHistory} />
                 <ScoreGauge
                   scanData={scanResult}
                   onOpenRawHeaders={() => setIsRawModalOpen(true)}
                 />
 
+                <SecurityFindings headerResults={scanResult.headerResults} />
+
                 <HeaderAccordion headers={scanResult.headerResults} />
 
+                <RedirectChain redirects={scanResult.redirectHistory} />
+
+                <Recommendations headerResults={scanResult.headerResults} currentScore={scanResult.score} />
+
                 <CookieTable cookies={scanResult.cookieResults} />
+
+                <ScanLimitations />
               </div>
             )}
 

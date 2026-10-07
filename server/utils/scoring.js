@@ -1,87 +1,75 @@
 /**
  * Utility for evaluating HTTP headers and Cookies, computing security score and assigning letter grades.
- * Aligned with ChatGPT 100-Point Weighted Security Benchmark (HSTS: 15, CSP: 20, X-Content-Type: 10, X-Frame: 10, Referrer: 10, Permissions: 10, COOP: 15).
+ * Aligned with ChatGPT 100-Point Weighted Security Benchmark.
  */
 
 const WELL_KNOWN_HSTS_PRELOADED_DOMAINS = [
-  'google.com',
-  'www.google.com',
-  'youtube.com',
-  'www.youtube.com',
-  'gmail.com',
-  'android.com',
-  'golang.org',
-  'fb.com',
-  'facebook.com',
-  'instagram.com',
-  'whatsapp.com',
-  'twitter.com',
-  'x.com',
-  'microsoft.com',
-  'apple.com',
-  'github.com',
-  'www.github.com',
-  'cloudflare.com',
-  'stripe.com'
+  'google.com', 'www.google.com', 'youtube.com', 'www.youtube.com', 'gmail.com', 'android.com',
+  'golang.org', 'fb.com', 'facebook.com', 'instagram.com', 'whatsapp.com', 'twitter.com',
+  'x.com', 'microsoft.com', 'apple.com', 'github.com', 'www.github.com', 'cloudflare.com', 'stripe.com'
 ];
 
 const HEADER_SPECS = [
   {
     key: 'strict-transport-security',
     name: 'Strict-Transport-Security (HSTS)',
-    maxPoints: 15,
+    maxPoints: 20,
     evaluate: (val, isHttps, rawHeaders, domain) => {
       const cleanDomain = (domain || '').toLowerCase().replace(/^www\./, '');
       const isPreloaded = WELL_KNOWN_HSTS_PRELOADED_DOMAINS.some(d => d.replace(/^www\./, '') === cleanDomain);
 
       if (!isHttps) {
         return {
-          status: 'MISSING',
-          points: 0,
-          scoreImpact: -15,
-          risk: 'High Risk: Site uses unencrypted HTTP. HSTS cannot be set over HTTP.',
+          status: 'MISSING', points: 0, severity: 'HIGH',
+          risk: 'Site uses unencrypted HTTP. HSTS cannot be set over HTTP.',
           recommendation: 'Enable HTTPS and send Strict-Transport-Security header.'
         };
       }
 
-      if (val) {
-        const maxAgeMatch = val.match(/max-age=(\d+)/i);
-        const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1], 10) : 0;
-        if (maxAge >= 15768000) {
+      if (!val) {
+        if (isPreloaded) {
           return {
-            status: 'PASS',
-            points: 15,
-            scoreImpact: 0,
-            risk: 'None: Strong HTTPS enforcement active (15/15 pts).',
-            recommendation: 'Maintain current HSTS configuration.'
-          };
-        } else {
-          return {
-            status: 'WARN',
-            points: 10,
-            scoreImpact: -5,
-            risk: 'Notice: HSTS max-age is under 6 months (10/15 pts).',
-            recommendation: 'Increase max-age duration to at least 31536000 seconds (1 year).'
+            status: 'PASS', points: 20, severity: 'LOW',
+            risk: 'Verified Preloaded: Domain is hardcoded into browser HSTS Preload Lists.',
+            recommendation: 'HSTS is natively enforced by all major browsers. Configuration is secure.'
           };
         }
+        return {
+          status: 'MISSING', points: 0, severity: 'HIGH',
+          risk: 'HSTS response header is missing on HTTPS response.',
+          recommendation: 'Explicitly send Strict-Transport-Security header with max-age=31536000 and includeSubDomains.'
+        };
       }
 
-      if (isPreloaded) {
+      const maxAgeMatch = val.match(/max-age=(\d+)/i);
+      const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1], 10) : 0;
+      const hasSubDomains = /includeSubDomains/i.test(val);
+      const hasPreload = /preload/i.test(val);
+
+      if (maxAge >= 31536000 && hasSubDomains) {
         return {
-          status: 'PASS',
-          points: 15,
-          scoreImpact: 0,
-          risk: 'Verified Preloaded: Domain is hardcoded into browser HSTS Preload Lists (15/15 pts).',
-          recommendation: 'HSTS is natively enforced by all major browsers.'
+          status: 'PASS', points: 20, severity: 'LOW',
+          risk: 'Strong HTTPS enforcement active. Good max-age and subdomains included.',
+          recommendation: 'Maintain current HSTS configuration.'
+        };
+      } else if (maxAge >= 15768000) {
+        return {
+          status: 'WARN', points: 15, severity: 'MEDIUM',
+          risk: `HSTS is enabled but ${!hasSubDomains ? 'missing includeSubDomains' : 'max-age is under 1 year'}.`,
+          recommendation: 'Increase max-age duration to at least 31536000 seconds (1 year) and add includeSubDomains.'
+        };
+      } else if (maxAge > 0) {
+        return {
+          status: 'WARN', points: 5, severity: 'HIGH',
+          risk: 'HSTS max-age is critically short, offering minimal protection.',
+          recommendation: 'Increase max-age duration to at least 31536000 seconds (1 year).'
         };
       }
 
       return {
-        status: 'WARN',
-        points: 5,
-        scoreImpact: -10,
-        risk: 'Notice: HSTS response header is missing on HTTPS response (5/15 pts).',
-        recommendation: 'Explicitly send Strict-Transport-Security header with max-age=31536000 and includeSubDomains.'
+        status: 'WARN', points: 0, severity: 'HIGH',
+        risk: 'Invalid or zero max-age provided. HSTS is effectively disabled.',
+        recommendation: 'Set max-age to a valid, long duration (e.g., 31536000).'
       };
     },
     description: 'Forces browsers to communicate exclusively over encrypted HTTPS connections.',
@@ -95,41 +83,48 @@ const HEADER_SPECS = [
     evaluate: (val, isHttps, rawHeaders) => {
       const cspReportOnly = rawHeaders['content-security-policy-report-only'];
 
-      if (val) {
-        if (val.includes("'unsafe-inline'") && !val.includes("'nonce-") && !val.includes("'sha256-")) {
+      if (!val) {
+        if (cspReportOnly) {
           return {
-            status: 'WARN',
-            points: 15,
-            scoreImpact: -5,
-            risk: 'Notice: Strong CSP present, but contains unsafe-inline styles (15/20 pts).',
-            recommendation: 'Remove unsafe-inline script/style directives and use nonces or SHA-256 hashes instead.'
+            status: 'WARN', points: 5, severity: 'HIGH',
+            risk: 'Report-Only policy detected. The browser is monitoring CSP violations but is not enforcing the policy.',
+            recommendation: 'Deploy an equivalent enforced Content-Security-Policy after validating violations.'
           };
         }
         return {
-          status: 'PASS',
-          points: 20,
-          scoreImpact: 0,
-          risk: 'None: CSP header is active and properly enforced (20/20 pts).',
-          recommendation: 'Maintain your existing Content-Security-Policy.'
+          status: 'MISSING', points: 0, severity: 'HIGH',
+          risk: 'No browser-enforced Content Security Policy is present. Vulnerable to XSS.',
+          recommendation: "Deploy an enforced CSP appropriate to the application's resources. E.g., default-src 'self'."
         };
       }
 
-      if (cspReportOnly) {
+      // Analyze directives
+      const hasUnsafeInline = val.includes("'unsafe-inline'");
+      const hasUnsafeEval = val.includes("'unsafe-eval'");
+      const hasWildcard = val.includes("*");
+      const hasNonce = val.includes("'nonce-");
+      const hasHash = val.includes("'sha");
+
+      if ((hasUnsafeInline && !hasNonce && !hasHash) || hasWildcard) {
         return {
-          status: 'WARN',
-          points: 8,
-          scoreImpact: -12,
-          risk: 'Notice: CSP is primarily reported rather than fully enforced on scanned response (8/20 pts).',
-          recommendation: 'Transition CSP from Report-Only mode to active Content-Security-Policy enforcement.'
+          status: 'WARN', points: 10, severity: 'MEDIUM',
+          risk: "Weak configuration: CSP allows 'unsafe-inline' or wildcard (*) sources, reducing XSS protection.",
+          recommendation: 'Remove unsafe-inline script/style directives and use nonces or SHA-256 hashes instead.'
+        };
+      }
+
+      if (hasUnsafeEval) {
+        return {
+          status: 'WARN', points: 15, severity: 'LOW',
+          risk: "Moderate configuration: CSP relies on 'unsafe-eval' which can be risky if user input is evaluated.",
+          recommendation: "Remove 'unsafe-eval' if possible, or tightly control inputs."
         };
       }
 
       return {
-        status: 'MISSING',
-        points: 0,
-        scoreImpact: -20,
-        risk: 'High Risk: Missing Content-Security-Policy header (0/20 pts).',
-        recommendation: 'Implement a restrictive CSP defining trusted sources for scripts, styles, and assets.'
+        status: 'PASS', points: 20, severity: 'LOW',
+        risk: 'Strong configuration: CSP header is active and properly restricts resources.',
+        recommendation: 'Maintain your existing Content-Security-Policy.'
       };
     },
     description: 'Restricts resources (scripts, images, stylesheets) the browser is allowed to load to mitigate XSS attacks.',
@@ -139,32 +134,25 @@ const HEADER_SPECS = [
   {
     key: 'x-content-type-options',
     name: 'X-Content-Type-Options',
-    maxPoints: 10,
+    maxPoints: 15,
     evaluate: (val, isHttps, rawHeaders, domain) => {
-      const isKnownOrigin = (domain || '').includes('google.com') || (domain || '').includes('github.com');
       if (val && val.toLowerCase().trim() === 'nosniff') {
         return {
-          status: 'PASS',
-          points: 10,
-          scoreImpact: 0,
-          risk: 'None: nosniff protection enabled (10/10 pts).',
+          status: 'PASS', points: 15, severity: 'LOW',
+          risk: 'nosniff protection enabled.',
           recommendation: 'Keep nosniff setting enabled.'
         };
       }
-      if (isKnownOrigin) {
+      if (val) {
         return {
-          status: 'PASS',
-          points: 10,
-          scoreImpact: 0,
-          risk: 'Verified Infrastructure: nosniff protection managed by origin web server (10/10 pts).',
-          recommendation: 'Keep origin server MIME settings active.'
+          status: 'WARN', points: 0, severity: 'MEDIUM',
+          risk: `Unexpected value "${val}". Only "nosniff" is valid.`,
+          recommendation: 'Set X-Content-Type-Options exactly to "nosniff".'
         };
       }
       return {
-        status: 'MISSING',
-        points: 0,
-        scoreImpact: -10,
-        risk: 'Medium Risk: Missing nosniff header (0/10 pts).',
+        status: 'MISSING', points: 0, severity: 'MEDIUM',
+        risk: 'Missing nosniff header. Browsers may sniff content away from declared content-type.',
         recommendation: 'Set X-Content-Type-Options header value to "nosniff".'
       };
     },
@@ -175,25 +163,38 @@ const HEADER_SPECS = [
   {
     key: 'x-frame-options',
     name: 'X-Frame-Options',
-    maxPoints: 10,
+    maxPoints: 15,
     evaluate: (val, isHttps, rawHeaders) => {
-      const csp = rawHeaders['content-security-policy'] || rawHeaders['content-security-policy-report-only'] || '';
+      const csp = rawHeaders['content-security-policy'] || '';
       const hasFrameAncestors = csp.includes('frame-ancestors');
 
-      if (val || hasFrameAncestors) {
+      if (hasFrameAncestors) {
         return {
-          status: 'PASS',
-          points: 10,
-          scoreImpact: 0,
-          risk: `None: ${val || 'frame-ancestors'} provides clickjacking protection (10/10 pts).`,
-          recommendation: 'Keep frame embedding protections enabled.'
+          status: 'PASS', points: 15, severity: 'LOW',
+          risk: 'Clickjacking protection detected through CSP frame-ancestors.',
+          recommendation: 'Maintain CSP frame-ancestors configuration.'
         };
       }
+
+      if (val) {
+        const lowerVal = val.toLowerCase().trim();
+        if (lowerVal === 'deny' || lowerVal === 'sameorigin') {
+          return {
+            status: 'PASS', points: 15, severity: 'LOW',
+            risk: `Clickjacking protection active via X-Frame-Options: ${lowerVal}.`,
+            recommendation: 'Consider migrating to CSP frame-ancestors for modern browsers, but current config is secure.'
+          };
+        }
+        return {
+          status: 'WARN', points: 0, severity: 'MEDIUM',
+          risk: `Invalid or obsolete X-Frame-Options value: ${val}.`,
+          recommendation: 'Use DENY or SAMEORIGIN, or configure frame-ancestors in CSP.'
+        };
+      }
+
       return {
-        status: 'MISSING',
-        points: 0,
-        scoreImpact: -10,
-        risk: 'Medium Risk: Page can be embedded in an <iframe>, making it vulnerable to Clickjacking (0/10 pts).',
+        status: 'MISSING', points: 0, severity: 'HIGH',
+        risk: 'Page can be embedded in an <iframe>, making it vulnerable to Clickjacking.',
         recommendation: 'Add X-Frame-Options: DENY or SAMEORIGIN, or configure frame-ancestors in CSP.'
       };
     },
@@ -206,31 +207,35 @@ const HEADER_SPECS = [
     name: 'Referrer-Policy',
     maxPoints: 10,
     evaluate: (val, isHttps, rawHeaders, domain) => {
-      const isKnownOrigin = (domain || '').includes('google.com') || (domain || '').includes('github.com');
-      if (val && !val.toLowerCase().includes('unsafe-url')) {
+      if (!val) {
         return {
-          status: 'PASS',
-          points: 10,
-          scoreImpact: 0,
-          risk: 'None: Appropriate referrer controls active (10/10 pts).',
+          status: 'MISSING', points: 0, severity: 'MEDIUM',
+          risk: 'Referrer-Policy header missing. Browsers default to strict-origin-when-cross-origin, but explicit policy is recommended.',
+          recommendation: 'Set Referrer-Policy to strict-origin-when-cross-origin or no-referrer.'
+        };
+      }
+
+      const lowerVal = val.toLowerCase().trim();
+      if (['no-referrer', 'same-origin', 'strict-origin', 'strict-origin-when-cross-origin'].includes(lowerVal)) {
+        return {
+          status: 'PASS', points: 10, severity: 'LOW',
+          risk: 'Strong privacy protection: Appropriate referrer controls active.',
           recommendation: 'Maintain strict referrer policy settings.'
         };
       }
-      if (isKnownOrigin) {
+      
+      if (['origin', 'origin-when-cross-origin'].includes(lowerVal)) {
         return {
-          status: 'PASS',
-          points: 10,
-          scoreImpact: 0,
-          risk: 'Verified Infrastructure: Appropriate referrer controls (10/10 pts).',
-          recommendation: 'Maintain referrer policy configuration.'
+          status: 'WARN', points: 5, severity: 'MEDIUM',
+          risk: 'Moderate privacy protection: Origin leaks to cross-origin requests.',
+          recommendation: 'Upgrade to strict-origin-when-cross-origin.'
         };
       }
+
       return {
-        status: 'MISSING',
-        points: 0,
-        scoreImpact: -10,
-        risk: 'Low Risk: Referrer-Policy header missing (0/10 pts).',
-        recommendation: 'Set Referrer-Policy to strict-origin-when-cross-origin or no-referrer.'
+        status: 'WARN', points: 0, severity: 'HIGH',
+        risk: `Weak or unsafe configuration: ${val}. Leaks full URLs.`,
+        recommendation: 'Avoid unsafe-url. Use strict-origin-when-cross-origin.'
       };
     },
     description: 'Controls how much referrer information (URL paths) is transmitted with outgoing requests.',
@@ -243,22 +248,29 @@ const HEADER_SPECS = [
     maxPoints: 10,
     evaluate: (val, isHttps, rawHeaders, domain) => {
       const fp = rawHeaders['feature-policy'];
-      const isKnownOrigin = (domain || '').includes('google.com');
-      if (val || fp || isKnownOrigin) {
+      if (!val && !fp) {
         return {
-          status: 'PASS',
-          points: 10,
-          scoreImpact: 0,
-          risk: 'None: Present permissions policy active (10/10 pts).',
-          recommendation: 'Keep hardware API permissions explicitly restricted.'
+          status: 'MISSING', points: 0, severity: 'MEDIUM',
+          risk: 'Missing explicit hardware API restrictions. Any embedded third-party could request permissions.',
+          recommendation: 'Add explicit Permissions-Policy header restricting camera, microphone, geolocation, etc.'
         };
       }
+
+      const policy = val || fp;
+      const isStrong = policy.includes('camera=()') && policy.includes('microphone=()') && policy.includes('geolocation=()');
+
+      if (isStrong) {
+        return {
+          status: 'PASS', points: 10, severity: 'LOW',
+          risk: 'Strong restriction: Core privacy APIs are explicitly disabled.',
+          recommendation: 'Keep hardware API permissions restricted.'
+        };
+      }
+
       return {
-        status: 'WARN',
-        points: 5,
-        scoreImpact: -5,
-        risk: 'Notice: Not as comprehensive as an ideal restrictive policy (5/10 pts).',
-        recommendation: 'Add explicit Permissions-Policy header restricting camera, microphone, and geolocation.'
+        status: 'WARN', points: 5, severity: 'LOW',
+        risk: 'Partial policy exists, but could be more comprehensive.',
+        recommendation: 'Ensure camera=(), microphone=(), and geolocation=() are included.'
       };
     },
     description: 'Restricts access to browser hardware APIs (camera, microphone, location, payments).',
@@ -268,24 +280,35 @@ const HEADER_SPECS = [
   {
     key: 'cross-origin-opener-policy',
     name: 'Cross-Origin-Opener-Policy (COOP)',
-    maxPoints: 15,
+    maxPoints: 10,
     evaluate: (val, isHttps, rawHeaders, domain) => {
-      const isKnownOrigin = (domain || '').includes('google.com') || (domain || '').includes('github.com');
-      if (val || isKnownOrigin) {
+      if (!val) {
         return {
-          status: 'PASS',
-          points: 15,
-          scoreImpact: 0,
-          risk: 'None: Cross-origin opener protection active (15/15 pts).',
-          recommendation: 'Maintain COOP setting.'
+          status: 'MISSING', points: 0, severity: 'LOW',
+          risk: 'Missing cross-origin opener isolation.',
+          recommendation: 'Set Cross-Origin-Opener-Policy to same-origin or same-origin-allow-popups.'
         };
       }
+
+      const lowerVal = val.toLowerCase().trim();
+      if (lowerVal === 'same-origin') {
+        return {
+          status: 'PASS', points: 10, severity: 'LOW',
+          risk: 'Strong cross-origin opener protection active.',
+          recommendation: 'Maintain COOP same-origin setting.'
+        };
+      } else if (lowerVal === 'same-origin-allow-popups') {
+        return {
+          status: 'WARN', points: 8, severity: 'LOW',
+          risk: 'Moderate isolation: allows popups to retain references.',
+          recommendation: 'Upgrade to same-origin if popups do not need to communicate with this window.'
+        };
+      }
+
       return {
-        status: 'MISSING',
-        points: 0,
-        scoreImpact: -15,
-        risk: 'Low Risk: Cross-Origin-Opener-Policy missing (0/15 pts).',
-        recommendation: 'Set Cross-Origin-Opener-Policy to same-origin or same-origin-allow-popups.'
+        status: 'WARN', points: 0, severity: 'MEDIUM',
+        risk: `Weak or invalid COOP configuration: ${val}.`,
+        recommendation: 'Use same-origin.'
       };
     },
     description: 'Isolates top-level document window objects to prevent cross-origin window leaks.',
@@ -310,7 +333,8 @@ function analyzeHeaders(rawHeaders, isHttps, domain) {
       points: evalResult.points,
       maxPoints: spec.maxPoints,
       value: Array.isArray(value) ? value.join(', ') : (value || null),
-      scoreImpact: evalResult.scoreImpact,
+      scoreImpact: evalResult.points - spec.maxPoints, // Now calculating potential impact cleanly
+      severity: evalResult.severity,
       description: spec.description,
       risk: evalResult.risk,
       recommendation: evalResult.recommendation,
@@ -335,47 +359,50 @@ function analyzeCookies(cookies, isHttps) {
     const effectiveSecure = Boolean(c.secure) || isSecurePrefix;
 
     if (!c.httpOnly) {
-      issues.push('Missing HttpOnly flag (accessible to client-side JavaScript)');
+      issues.push('Missing HttpOnly flag');
     }
     if (!effectiveSecure && isHttps) {
-      issues.push('Missing Secure flag (transmitted in unencrypted plaintext)');
+      issues.push('Missing Secure flag');
     }
     const sameSite = c.sameSite ? c.sameSite.charAt(0).toUpperCase() + c.sameSite.slice(1).toLowerCase() : 'None';
     if (sameSite === 'None' && !effectiveSecure) {
-      issues.push('SameSite=None requires Secure flag');
+      issues.push('SameSite=None without Secure');
     }
 
     let riskLevel = 'SECURE';
-    if (issues.length >= 2) {
+    if (issues.length >= 2 || (sameSite === 'None' && !effectiveSecure)) {
       riskLevel = 'HIGH';
     } else if (issues.length === 1) {
       riskLevel = 'MEDIUM';
-    } else {
-      riskLevel = 'SECURE';
     }
 
     return {
       name,
-      value: c.value ? (c.value.length > 25 ? c.value.substring(0, 22) + '...' : c.value) : '',
+      // Never expose actual session tokens
+      value: '*** REDACTED ***',
       secure: effectiveSecure,
       httpOnly: Boolean(c.httpOnly),
       sameSite: sameSite,
       path: c.path || '/',
       domain: c.domain || '',
+      expires: c.expires ? new Date(c.expires).toISOString() : (c.maxAge ? `Max-Age: ${c.maxAge}` : 'Session'),
       riskLevel,
       issues
     };
   });
 }
 
-function calculateScoreAndGrade(headerResults, cookieResults, domain) {
+function calculateScoreAndGrade(headerResults) {
   let earnedHeaderPoints = 0;
+  let totalMaxPoints = 0;
 
   headerResults.forEach(h => {
     earnedHeaderPoints += (h.points || 0);
+    totalMaxPoints += h.maxPoints;
   });
 
-  const finalScore = Math.max(0, Math.min(100, Math.round(earnedHeaderPoints)));
+  // Ensure total score is mapped strictly to 100
+  const finalScore = totalMaxPoints > 0 ? Math.max(0, Math.min(100, Math.round((earnedHeaderPoints / totalMaxPoints) * 100))) : 0;
 
   let grade = 'F';
   if (finalScore >= 95) grade = 'A+';

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, ArrowUpRight, Clock, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import ScoreBreakdown from './ScoreBreakdown';
-import Recommendations from './Recommendations';
 
 export default function ScoreGauge({ scanData, onOpenRawHeaders }) {
   const [showCalculation, setShowCalculation] = useState(false);
@@ -44,7 +43,10 @@ export default function ScoreGauge({ scanData, onOpenRawHeaders }) {
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">SECURITY ASSESSMENT REPORT</span>
-            <span className="text-[10px] px-2 py-0.5 rounded text-emerald-400 border border-emerald-500/30 font-mono bg-emerald-500/10 flex items-center gap-1">
+            <span 
+              className="text-[10px] px-2 py-0.5 rounded text-emerald-400 border border-emerald-500/30 font-mono bg-emerald-500/10 flex items-center gap-1 cursor-help"
+              title="HTTPS protects the connection between the client and server. Security headers provide additional browser-side protections."
+            >
               <ShieldCheck className="w-3 h-3" /> HTTPS Verified
             </span>
           </div>
@@ -106,9 +108,6 @@ export default function ScoreGauge({ scanData, onOpenRawHeaders }) {
         <ScoreBreakdown headerResults={headerResults} />
       </div>
 
-      {/* Priority Recommendations */}
-      <Recommendations headerResults={headerResults} currentScore={score} />
-
       {/* Security Context & Calculation Explanation */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <button
@@ -128,12 +127,12 @@ export default function ScoreGauge({ scanData, onOpenRawHeaders }) {
             </p>
             <ul className="list-disc pl-5 space-y-1 text-slate-300">
               <li><strong>Content-Security-Policy</strong>: up to 20 points</li>
-              <li><strong>Strict-Transport-Security (HSTS)</strong>: up to 15 points</li>
-              <li><strong>Cross-Origin-Opener-Policy</strong>: up to 15 points</li>
-              <li><strong>X-Content-Type-Options</strong>: up to 10 points</li>
-              <li><strong>X-Frame-Options</strong>: up to 10 points</li>
+              <li><strong>Strict-Transport-Security (HSTS)</strong>: up to 20 points</li>
+              <li><strong>X-Content-Type-Options</strong>: up to 15 points</li>
+              <li><strong>X-Frame-Options</strong>: up to 15 points</li>
               <li><strong>Referrer-Policy</strong>: up to 10 points</li>
               <li><strong>Permissions-Policy</strong>: up to 10 points</li>
+              <li><strong>Cross-Origin-Opener-Policy</strong>: up to 10 points</li>
             </ul>
             <p className="text-xs">
               <strong className="text-rose-400">Important:</strong> Security headers are evaluated directly from the HTTP response received by the scanner. Missing or weak headers reduce the security score regardless of domain reputation.

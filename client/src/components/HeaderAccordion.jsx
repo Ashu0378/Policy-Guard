@@ -34,10 +34,11 @@ function HeaderCard({ header }) {
     header.status === 'WARN' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
     'bg-rose-500/20 text-rose-400 border-rose-500/30';
 
-  const impactLabel = header.status === 'PASS' ? 'LOW' : header.maxPoints >= 15 ? 'HIGH' : 'MEDIUM';
+  const severityColor = 
+    header.severity === 'CRITICAL' || header.severity === 'HIGH' ? 'text-rose-400' : 
+    header.severity === 'MEDIUM' ? 'text-amber-400' : 'text-emerald-400';
 
   const handleCopyHeader = () => {
-    // Basic recommended string representation
     const textToCopy = `${header.name}: ${activePlatform === 'express' ? header.expressFix : header.nginxFix}`;
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
@@ -63,9 +64,9 @@ function HeaderCard({ header }) {
 
         <div className="flex items-center gap-6 md:border-l md:border-slate-800 md:pl-6">
           <div className="text-center">
-            <p className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Impact</p>
-            <p className={`text-sm font-bold ${impactLabel === 'HIGH' ? 'text-rose-400' : impactLabel === 'MEDIUM' ? 'text-amber-400' : 'text-emerald-400'}`}>
-              {impactLabel}
+            <p className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Severity</p>
+            <p className={`text-sm font-bold ${severityColor}`}>
+              {header.severity}
             </p>
           </div>
           <div className="text-center">

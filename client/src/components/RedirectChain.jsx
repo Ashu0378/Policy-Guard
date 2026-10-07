@@ -1,37 +1,90 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Clock, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function RedirectChain({ redirects }) {
   if (!redirects || redirects.length <= 1) return null;
 
   return (
     <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-xl mb-8">
-      <h3 className="text-lg font-bold text-slate-100 mb-6 uppercase tracking-wider text-sm">Redirect Timeline</h3>
-      <div className="space-y-0 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-slate-800">
-        {redirects.map((hop, idx) => {
-          const isFinal = idx === redirects.length - 1;
-          const statusColor = 
-            isFinal ? 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30' : 
-            'text-amber-400 bg-amber-500/20 border-amber-500/30';
-          const iconColor = isFinal ? 'bg-emerald-500' : 'bg-amber-500';
-
-          return (
-            <div key={idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-slate-900 ${iconColor} text-slate-900 font-bold text-sm shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-xl z-10`}>
-                {String(idx + 1).padStart(2, '0')}
-              </div>
-              
-              <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl bg-slate-800 border border-slate-700 shadow-sm mb-4">
-                <div className="flex flex-col gap-2">
-                  <div className="text-sm font-mono text-slate-300 break-all">{hop.url}</div>
-                  <div className={`self-start px-2 py-0.5 rounded text-xs font-bold border ${statusColor}`}>
-                    {hop.status} {isFinal ? 'OK (Final Response)' : 'Redirect'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <h3 className="text-lg font-bold text-slate-100 mb-6 flex items-center gap-2">
+        <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+        </svg>
+        Redirect Chain Analysis
+      </h3>
+      <div className="space-y-4">
+        {redirects.map((hop, idx) => (
+          <RedirectHop key={idx} hop={hop} idx={idx} total={redirects.length} />
+        ))}
       </div>
+    </div>
+  );
+}
+
+function RedirectHop({ hop, idx, total }) {
+  const [expanded, setExpanded] = useState(false);
+  const isFinal = hop.isFinal || idx === total - 1;
+  const isInitial = idx === 0;
+  
+  const statusColor = 
+    isFinal ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 
+    hop.status >= 400 ? 'text-rose-400 bg-rose-500/10 border-rose-500/30' :
+    'text-amber-400 bg-amber-500/10 border-amber-500/30';
+
+  const label = isFinal ? 'Final Response' : isInitial ? 'Initial Request' : 'Redirect';
+
+  return (
+    <div className={`p-4 rounded-xl border transition-all ${isFinal ? 'border-emerald-500/30 bg-emerald-950/20' : 'border-slate-800 bg-slate-900/50 hover:bg-slate-800'}`}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${statusColor}`}>
+              {hop.status} {label}
+            </span>
+            {hop.durationMs && (
+              <span className="flex items-center gap-1 text-[11px] text-slate-500 font-mono">
+                <Clock className="w-3 h-3" /> {hop.durationMs}ms
+              </span>
+            )}
+          </div>
+          <div className="font-mono text-xs text-slate-300 break-all pr-4">
+            {hop.url}
+          </div>
+        </div>
+        <div className="flex items-center text-slate-500 shrink-0">
+          <button className="text-xs hover:text-slate-300 flex items-center gap-1 transition-colors">
+            {expanded ? 'Hide Headers' : 'View Headers'}
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+      
+      {expanded && hop.headers && (
+        <div className="mt-4 pt-4 border-t border-slate-800/80">
+          {hop.location && (
+            <div className="mb-3 flex gap-2 text-xs">
+              <span className="text-slate-500 font-bold uppercase">Location:</span>
+              <a href={hop.location} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline flex items-center gap-1 break-all">
+                {hop.location} <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+          <div className="bg-slate-950 rounded border border-slate-800 p-3 max-h-60 overflow-y-auto">
+            <pre className="text-[11px] font-mono text-slate-400 whitespace-pre-wrap">
+              {Object.entries(hop.headers).map(([k, v]) => (
+                <div key={k} className="mb-1">
+                  <span className="text-indigo-300">{k}:</span> <span className="text-emerald-200/80">{v}</span>
+                </div>
+              ))}
+            </pre>
+          </div>
+          {isFinal && (
+            <div className="mt-3 text-[11px] text-emerald-400/80 bg-emerald-500/10 px-3 py-2 rounded border border-emerald-500/20">
+              This response was used to calculate the final security score and header evaluations.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

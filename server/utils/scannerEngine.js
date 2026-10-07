@@ -98,7 +98,7 @@ async function normalizeAndValidateUrl(inputUrl) {
  * Executes scanner HTTP GET request following up to 5 redirects.
  */
 async function scanTarget(inputUrl) {
-  const startTime = Date.now();
+  const globalStartTime = Date.now();
   const { normalizedUrl, domain, isHttps } = await normalizeAndValidateUrl(inputUrl);
 
   const redirectHistory = [];
@@ -110,7 +110,7 @@ async function scanTarget(inputUrl) {
   const instance = axios.create({
     timeout: 5000,
     maxRedirects: 0, // Manual redirect handling to record history
-    validateStatus: () => true, // Accept all HTTP status codes (2xx, 3xx, 4xx, 5xx)
+    validateStatus: () => true, // Accept all HTTP status codes
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -118,36 +118,63 @@ async function scanTarget(inputUrl) {
     }
   });
 
+  const sanitizeHeaders = (headers) => {
+    const sanitized = {};
+    Object.keys(headers).forEach(k => {
+      const val = headers[k];
+      let strVal = Array.isArray(val) ? val.join(', ') : String(val);
+      const lowerK = k.toLowerCase();
+      if (['authorization', 'cookie', 'x-api-key', 'session'].includes(lowerK)) {
+        strVal = '*** REDACTED ***';
+      } else if (lowerK === 'set-cookie') {
+        // Redact values but keep directives for visibility
+        strVal = strVal.replace(/([^=;\s]+)=([^;]+)/g, (match, key) => {
+           if (['domain', 'path', 'expires', 'max-age', 'samesite'].includes(key.toLowerCase())) {
+               return match;
+           }
+           return `${key}=***REDACTED***`;
+        });
+      }
+      sanitized[k] = strVal;
+    });
+    return sanitized;
+  };
+
   while (redirectsCount <= maxRedirects) {
     try {
+      const stepStartTime = Date.now();
       response = await instance.get(currentUrl);
+      const stepDuration = Date.now() - stepStartTime;
+      
+      const isRedirect = [301, 302, 303, 307, 308].includes(response.status) && response.headers.location;
+      
       redirectHistory.push({
         url: currentUrl,
-        status: response.status
+        status: response.status,
+        location: response.headers.location || null,
+        headers: sanitizeHeaders(response.headers),
+        isFinal: !isRedirect,
+        durationMs: stepDuration
       });
 
-      // Handle HTTP redirects (301, 302, 303, 307, 308)
-      if ([301, 302, 303, 307, 308].includes(response.status) && response.headers.location) {
+      if (isRedirect) {
         const nextUrl = new URL(response.headers.location, currentUrl).href;
-        
-        // Re-validate target URL for SSRF on redirect
         await normalizeAndValidateUrl(nextUrl);
-
         currentUrl = nextUrl;
         redirectsCount++;
         if (redirectsCount > maxRedirects) {
           break;
         }
       } else {
-        break; // Reached final target response
+        break; // Final response
       }
     } catch (err) {
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-        throw new Error(`Connection Timeout: Request to ${currentUrl} timed out after 5 seconds.`);
+        throw new Error(`Connection Timeout: Request to ${currentUrl} timed out.`);
       } else if (err.code === 'ENOTFOUND') {
         throw new Error(`Target Unreachable: Hostname could not be found.`);
       } else if (err.code === 'ECONNREFUSED') {
-        throw new Error(`Connection Refused: Target port is closed or unreachable.`);
+        throw new Error(`Connection Refused: Target port is closed.`);
       } else {
         throw new Error(`Network Error: ${err.message}`);
       }
@@ -158,35 +185,22 @@ async function scanTarget(inputUrl) {
     throw new Error('Failed to retrieve response from target domain.');
   }
 
-  // Validate final response status code
-  if (![200, 204, 304].includes(response.status)) {
-    if (response.status === 403 || response.status === 503 || response.status === 401) {
-      throw new Error(`WAF/Security Block: The target domain returned a ${response.status} status code, likely blocking the automated scanner.`);
-    }
-    throw new Error(`Invalid Target Response: The target domain returned a non-success HTTP status code (${response.status}). Only 200, 204, and 304 are supported for scanning.`);
+  // Allow scanning even if it's a 4xx or 5xx, but flag it
+  if (response.status >= 400) {
+    // Only throw if it's WAF block or auth required that completely prevents scanning
+    // But since the user wants to scan ANY response headers, we shouldn't throw error anymore unless connection failed.
   }
 
-  const durationMs = Date.now() - startTime;
+  const durationMs = Date.now() - globalStartTime;
   const rawHeaders = response.headers;
   
-  // Extract set-cookie headers
   const setCookieHeader = response.headers['set-cookie'] || [];
-  const parsedCookies = setCookieParser.parse(setCookieHeader, {
-    decodeValues: true
-  });
+  const parsedCookies = setCookieParser.parse(setCookieHeader, { decodeValues: true });
 
-  // Evaluate Headers & Cookies
   const finalIsHttps = currentUrl.startsWith('https://');
   const headerResults = analyzeHeaders(rawHeaders, finalIsHttps, domain);
   const cookieResults = analyzeCookies(parsedCookies, finalIsHttps);
-  const { score, grade } = calculateScoreAndGrade(headerResults, cookieResults, domain);
-
-  // Convert raw headers to key-value string map for persistence & API response
-  const formattedRawHeaders = {};
-  Object.keys(rawHeaders).forEach(k => {
-    const val = rawHeaders[k];
-    formattedRawHeaders[k] = Array.isArray(val) ? val.join(', ') : String(val);
-  });
+  const { score, grade } = calculateScoreAndGrade(headerResults);
 
   return {
     targetUrl: currentUrl,
@@ -195,7 +209,7 @@ async function scanTarget(inputUrl) {
     grade,
     headerResults,
     cookieResults,
-    rawHeaders: formattedRawHeaders,
+    rawHeaders: sanitizeHeaders(rawHeaders),
     scanDurationMs: durationMs,
     redirectHistory,
     scannedAt: new Date()
