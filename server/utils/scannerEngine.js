@@ -112,6 +112,28 @@ async function scanTarget(inputUrl) {
   const originalTlsReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
+  const sanitizeHeaders = (headers) => {
+    const sanitized = {};
+    Object.keys(headers).forEach(k => {
+      const val = headers[k];
+      let strVal = Array.isArray(val) ? val.join(', ') : String(val);
+      const lowerK = k.toLowerCase();
+      if (['authorization', 'cookie', 'x-api-key', 'session'].includes(lowerK)) {
+        strVal = '*** REDACTED ***';
+      } else if (lowerK === 'set-cookie') {
+        // Redact values but keep directives for visibility
+        strVal = strVal.replace(/([^=;\s]+)=([^;]+)/g, (match, key) => {
+           if (['domain', 'path', 'expires', 'max-age', 'samesite'].includes(key.toLowerCase())) {
+               return match;
+           }
+           return `${key}=***REDACTED***`;
+        });
+      }
+      sanitized[k] = strVal;
+    });
+    return sanitized;
+  };
+
   try {
     while (redirectsCount <= maxRedirects) {
       try {
