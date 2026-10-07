@@ -8,7 +8,7 @@ import RawHeadersModal from './components/RawHeadersModal';
 import ScanHistory from './components/ScanHistory';
 import KnowledgeBase from './components/KnowledgeBase';
 import RedirectChain from './components/RedirectChain';
-import { ShieldCheck, Lock, Terminal, Download, ShieldAlert, CheckCircle2, BookOpen, Layers } from 'lucide-react';
+import { ShieldCheck, Lock, Download, ShieldAlert, CheckCircle2, BookOpen, Layers } from 'lucide-react';
 
 export default function App() {
   const {

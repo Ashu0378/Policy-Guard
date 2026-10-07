@@ -1,5 +1,4 @@
 import React from 'react';
-import { ArrowDown } from 'lucide-react';
 
 export default function RedirectChain({ redirects }) {
   if (!redirects || redirects.length <= 1) return null;

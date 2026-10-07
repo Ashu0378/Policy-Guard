@@ -5,11 +5,10 @@ export function useScan() {
   const [scanResult, setScanResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const loadHistory = useCallback(async () => {
-    setHistoryLoading(true);
     try {
       const res = await fetchHistory();
       if (res.success) {
@@ -57,6 +56,7 @@ export function useScan() {
     }
   };
 
+  // oxlint-disable-next-line react/set-state-in-effect
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ShieldAlert, AlertTriangle, ArrowUpRight, CheckCircle2, Clock, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldCheck, ArrowUpRight, Clock, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import ScoreBreakdown from './ScoreBreakdown';
 import Recommendations from './Recommendations';
 

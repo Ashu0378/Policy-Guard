@@ -1,7 +1,7 @@
 import React from 'react';
-import { History, ExternalLink, Trash2, Calendar, ShieldCheck, Clock } from 'lucide-react';
+import { History, ExternalLink, Trash2, Clock } from 'lucide-react';
 
-export default function ScanHistory({ history = [], onSelectScan, onClearHistory, loading }) {
+export default function ScanHistory({ history = [], onSelectScan, onClearHistory }) {
   if (!history || history.length === 0) {
     return (
       <div className="w-full glass-panel rounded-3xl p-6 md:p-8 mb-8 text-center text-slate-400">

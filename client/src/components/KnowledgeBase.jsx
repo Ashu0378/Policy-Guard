@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, ShieldCheck, Terminal, Copy, Check, ExternalLink, Code2, Server } from 'lucide-react';
+import { BookOpen, Terminal, Copy, Check, ExternalLink } from 'lucide-react';
 
 const SECURITY_HEADERS_GUIDE = [
   {
