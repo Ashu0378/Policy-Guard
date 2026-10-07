@@ -108,11 +108,13 @@ async function scanTarget(inputUrl) {
   const maxRedirects = 5;
 
   const https = require('https');
+  const http = require('http');
   const instance = axios.create({
-    timeout: 5000,
+    timeout: 15000,
     maxRedirects: 0, // Manual redirect handling to record history
     validateStatus: () => true, // Accept all HTTP status codes
     httpsAgent: new https.Agent({ rejectUnauthorized: false }), // Allow scanning domains with bad SSL certificates
+    httpAgent: new http.Agent({ keepAlive: false }), // Prevent hanging on http keep-alive
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
