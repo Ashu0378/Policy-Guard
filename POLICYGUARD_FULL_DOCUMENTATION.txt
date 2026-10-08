@@ -1,0 +1,397 @@
+====================================================================================================
+                        POLICYGUARD SECURITY SCANNER - A-Z PROJECT DOCUMENTATION
+====================================================================================================
+
+DOCUMENT INFORMATION:
+---------------------
+Project Name    : PolicyGuard Web Security Header & Cookie Auditor
+Architecture    : MERN Stack (MongoDB, Express.js, React, Node.js)
+Scanner Engine  : Native Node Fetch / Axios with Custom SSRF & Header Evaluation Engine
+Author          : Antigravity Security Engineering Team
+Generated Date  : 2026-10-08
+
+
+====================================================================================================
+1. PROJECT OVERVIEW
+====================================================================================================
+
+PolicyGuard is a production-ready, enterprise-grade Web Security Header & Cookie Scanner built on the 
+MERN stack. It conducts non-intrusive automated security audits of public websites by sending HTTP/HTTPS 
+GET requests, inspecting response headers, tracking HTTP redirect chains, parsing Set-Cookie flags, 
+and evaluating compliance against modern web security standards (OWASP, NIST, ChatGPT 100-Point Weighted 
+Security Benchmark).
+
+KEY CAPABILITIES:
+- 100-Point Weighted Scoring Algorithm & Letter Grade System (A+ to F).
+- SSRF (Server-Side Request Forgery) Defense: Validates input URLs and blocks loopback/private/internal 
+  IP ranges (127.0.0.1, 10.x.x.x, 192.168.x.x, 172.16-31.x.x, CGNAT, Link-Local) via DNS resolution and ipaddr.js.
+- Strict Security Header Auditing: Evaluates HSTS, CSP, X-Content-Type-Options, X-Frame-Options, 
+  Referrer-Policy, Permissions-Policy, and COOP (Cross-Origin-Opener-Policy).
+- Cookie Security Audit: Parses Set-Cookie headers, checking HttpOnly, Secure, SameSite flags, and 
+  __Secure- / __Host- prefix directives while redacting sensitive session values.
+- HTTP Redirect Chain Tracking: Follows up to 5 HTTP redirects (301, 302, 303, 307, 308) to inspect 
+  header configurations across redirect paths.
+- Remediation Code Generation: Instant copy-paste remediation snippets for Nginx configuration and Node.js/Express (Helmet middleware).
+- AI Enrichment Integration: Integrates with OpenAI API (gpt-4o-mini) to provide plain-English executive 
+  summaries, CSP vulnerability analysis, and customized remediation plans.
+- High-Availability Fallback: Gracefully operates in memory if MongoDB is disconnected or unavailable.
+- Export Capabilities: One-click export of full audit reports in formatted JSON structure.
+
+
+====================================================================================================
+2. TECH STACK & DEPENDENCIES
+====================================================================================================
+
+A. FRONTEND (CLIENT):
+---------------------
+- React (v19.2.8): Modern component-based UI layer with functional components and hooks.
+- Vite (v8.3.0): Next-generation frontend build tool providing fast HMR (Hot Module Replacement).
+- Tailwind CSS (v3.4.17): Utility-first CSS framework for responsive design, custom dark mode, glassmorphism UI.
+- Lucide React (v1.52.0): Crisp SVG security iconography.
+- Axios (v1.20.0): HTTP client for communicating with backend REST endpoints.
+- jsPDF (v4.2.1): Client-side PDF generation library for report export.
+- Oxlint (v1.81.0): Ultra-fast JavaScript/React linter for code quality.
+
+B. BACKEND (SERVER):
+--------------------
+- Node.js (v18+): Asynchronous event-driven JavaScript runtime.
+- Express (v5.2.1): Robust web application framework for building REST API endpoints.
+- Mongoose (v9.11.0): MongoDB object modeling tool for schema validation and database queries.
+- ipaddr.js (v2.5.0): IPv4 / IPv6 manipulation library used to detect private IP address blocks for SSRF protection.
+- set-cookie-parser (v3.1.2): Parses HTTP Set-Cookie header strings into structured JavaScript objects.
+- express-rate-limit (v8.7.1): Rate-limiting middleware to prevent brute-force or denial-of-service scan requests (30 requests per 15 minutes per IP).
+- dotenv (v18.0.6): Zero-dependency module for loading environment variables from .env files.
+- cors (v2.8.6): Express middleware to enable Cross-Origin Resource Sharing with restricted origins.
+- nodemon (v3.1.14): Development utility that automatically restarts Node server upon file changes.
+
+
+====================================================================================================
+3. COMPLETE DIRECTORY & FILE STRUCTURE
+====================================================================================================
+
+PolicyGuard/
+├── package.json                    # Root package descriptor & dev script orchestrator
+├── README.md                       # Project overview documentation
+├── POLICYGUARD_FULL_DOCUMENTATION.txt # Comprehensive project documentation (This file)
+│
+├── server/                         # Backend Express.js Server
+│   ├── package.json                # Backend dependencies and scripts
+│   ├── .env                        # Environment variables (PORT, MONGO_URI, CLIENT_URL, OPENAI_API_KEY)
+│   ├── .env.example                # Template for environment configuration
+│   ├── server.js                   # Application entry point & Express server bootstrap
+│   ├── config/
+│   │   └── db.js                   # MongoDB connection logic with automatic in-memory fallback
+│   ├── controllers/
+│   │   ├── scanController.js       # Core controller for scan execution, history, compare, & clear
+│   │   └── historyController.js    # Auxiliary controller for scan history operations
+│   ├── middleware/
+│   │   └── rateLimiter.js          # Rate limiter configuration (30 scans / 15 mins)
+│   ├── models/
+│   │   └── Scan.js                 # Mongoose data schema for security scan documents
+│   ├── routes/
+│   │   └── scanRoutes.js           # REST API routing definitions (/api/scan, /api/history, etc.)
+│   ├── services/
+│   │   └── aiService.js            # OpenAI GPT-4o-mini security enrichment service
+│   └── utils/
+│       ├── scannerEngine.js        # Network scanner, SSRF validation, HTTP fetch & redirect handling
+│       └── scoring.js              # Security header specifications, cookie parsing rules, & 100-pt algorithm
+│
+└── client/                         # Frontend React + Vite Application
+    ├── package.json                # Frontend dependencies and scripts
+    ├── index.html                  # Main HTML template entry point
+    ├── vite.config.js              # Vite bundler configuration & proxy settings
+    ├── tailwind.config.js          # Tailwind CSS theme extension & custom color palette
+    ├── postcss.config.js           # PostCSS configuration for Tailwind CSS & Autoprefixer
+    ├── .oxlintrc.json              # Oxlint linting configuration
+    ├── public/                     # Static public web assets
+    └── src/
+        ├── main.jsx                # React DOM root render entry point
+        ├── App.jsx                 # Master application component & layout manager
+        ├── App.css                 # Custom animations and global utility styles
+        ├── index.css               # Tailwind CSS imports & base styles
+        ├── components/
+        │   ├── ScanForm.jsx        # Target URL entry form with validation & quick-fill buttons
+        │   ├── ScoreGauge.jsx       # Interactive SVG score circle gauge and grade badge
+        │   ├── SecurityFindings.jsx # Summary banner highlighting critical pass/warn/missing header metrics
+        │   ├── HeaderAccordion.jsx  # Expandable list of audited headers with risks & fix snippets
+        │   ├── CookieTable.jsx     # Detailed tabular view of audited cookies and security flags
+        │   ├── CodeFixCard.jsx     # Interactive Nginx and Express copy-paste code snippets
+        │   ├── Recommendations.jsx # Prioritized action plan sorted by severity impact
+        │   ├── RedirectChain.jsx   # Visual timeline step-by-step redirect chain view
+        │   ├── ScanHistory.jsx     # Recent scans table with quick reload & clear actions
+        │   ├── KnowledgeBase.jsx   # Interactive reference library of modern web security headers
+        │   ├── RawHeadersModal.jsx # Full-screen modal displaying sanitized raw HTTP response headers
+        │   └── ScanLimitations.jsx # Disclaimer panel detailing scanner scope & limitations
+        ├── hooks/
+        │   └── useScan.js          # Custom React hook encapsulating scan execution & state logic
+        ├── services/
+        │   └── api.js              # Axios instance configuration for backend API integration
+        └── utils/
+            └── exportHelpers.js    # Utilities for exporting JSON and generating formatted reports
+
+
+====================================================================================================
+4. HOW IT WORKS - CORE DATA & EXECUTION WORKFLOW
+====================================================================================================
+
+STEP 1: USER INPUT & SUBMISSION
+  User enters a domain or URL (e.g. `github.com` or `https://example.com`) in `ScanForm.jsx`.
+  The input is validated client-side and sent via HTTP POST to `http://localhost:5000/api/scan`.
+
+STEP 2: RATE LIMITING & ROUTING
+  `rateLimiter.js` checks the client IP address. If within 30 requests/15 mins, request reaches 
+  `scanController.createScan`.
+
+STEP 3: URL NORMALIZATION & SSRF PROTECTION (`scannerEngine.js`)
+  a. Prepend `http://` if protocol is missing.
+  b. Parse URL hostname.
+  c. Reject obvious local hostnames (`localhost`, `127.0.0.1`, `::1`, `.local`, `.internal`).
+  d. Perform DNS lookup via Node's `dns.promises.lookup` to retrieve IPv4 and IPv6 target addresses.
+  e. Parse resolved IPs with `ipaddr.js`. If any address resolves to private, loopback, link-local, 
+     or CGNAT ranges, execution immediately halts with an SSRF Protection Error.
+
+STEP 4: HTTP SCANNING & REDIRECT CHAIN TRACKING (`scannerEngine.js`)
+  a. Initiate network GET request using native `fetch` with `redirect: 'manual'` and custom Chrome User-Agent.
+  b. Capture response status code, timing, and response headers.
+  c. Sanitize headers: mask sensitive header values (`Authorization`, `Cookie`, `X-Api-Key`, session values) 
+     with `*** REDACTED ***`.
+  d. If response returns a 3xx redirect status (301, 302, 303, 307, 308) and `Location` header, 
+     record the redirect step in `redirectHistory` array and follow up to 5 hops max.
+
+STEP 5: HEADER & COOKIE ANALYSIS (`scoring.js`)
+  a. `analyzeHeaders()`: Compares raw response headers against 7 security specifications:
+     1. Strict-Transport-Security (HSTS) - [20 Max Points]
+     2. Content-Security-Policy (CSP) - [20 Max Points]
+     3. X-Content-Type-Options - [15 Max Points]
+     4. X-Frame-Options - [15 Max Points]
+     5. Referrer-Policy - [10 Max Points]
+     6. Permissions-Policy - [10 Max Points]
+     7. Cross-Origin-Opener-Policy (COOP) - [10 Max Points]
+  b. `analyzeCookies()`: Parses `Set-Cookie` headers via `set-cookie-parser`. Evaluates flags:
+     - HttpOnly flag presence
+     - Secure flag presence
+     - SameSite directive (Strict / Lax / None)
+     - Prefix validation (__Secure- / __Host-)
+     - Exposes flag status while redacting actual cookie values to `*** REDACTED ***`.
+  c. `calculateScoreAndGrade()`: Computes total earned points against total max points (100-point scale) 
+     and maps score to Letter Grades:
+     - 95 to 100 -> Grade A+
+     - 85 to 94  -> Grade A
+     - 75 to 84  -> Grade B
+     - 60 to 74  -> Grade C
+     - 45 to 59  -> Grade D
+     - 0  to 44  -> Grade F
+
+STEP 6: AI ENRICHMENT (`aiService.js`)
+  Optionally triggers OpenAI API request (`gpt-4o-mini`) to generate executive risk summary, CSP 
+  vulnerability breakdown, and tailored remediation instructions. Returns safe fallback if API key is missing.
+
+STEP 7: PERSISTENCE & RESPONSE
+  Saves full scan result object to MongoDB database via Mongoose `Scan` model.
+  If MongoDB is offline, stores in `inMemoryScans` buffer array (up to 20 recent scans).
+  Returns JSON payload to React client UI for real-time rendering.
+
+
+====================================================================================================
+5. DETAILED MODULE BREAKDOWN & IMPLEMENTATION SPECIFICATIONS
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+SERVER MODULES
+----------------------------------------------------------------------------------------------------
+
+1. `server.js`
+   - Express server entry point listening on PORT (Default: 5000).
+   - Configures CORS origin matching `CLIENT_URL` (http://localhost:5173).
+   - Mounts Express JSON parser and URL-encoded middleware.
+   - Registers `/api` scanner routes.
+   - Exposes Health Check endpoint: GET `/api/health`.
+   - Contains global 404 handler and 500 error handling middleware.
+
+2. `config/db.js`
+   - Connects to MongoDB database specified by `MONGO_URI`.
+   - Uses `serverSelectionTimeoutMS: 3000` to prevent hanging connection attempts.
+   - Sets global flag `isConnected`. If connection fails, logs warning and enables in-memory fallback.
+
+3. `models/Scan.js`
+   - Mongoose Schema defining scan document fields:
+     - `targetUrl`: String
+     - `domain`: String
+     - `score`: Number
+     - `grade`: String
+     - `redirectHistory`: Array
+     - `headerResults`: Array
+     - `cookieResults`: Array
+     - `rawHeaders`: Object
+     - `scanDurationMs`: Number
+     - `aiEnrichment`: Object
+     - `scannedAt`: Date
+
+4. `routes/scanRoutes.js`
+   - POST   `/api/scan`     -> `createScan` (Protected by scanRateLimiter)
+   - GET    `/api/history`  -> `getScanHistory` (Returns 10 most recent scans)
+   - GET    `/api/compare`  -> `compareScans` (Compares domainA vs domainB)
+   - GET    `/api/scan/:id` -> `getScanById` (Retrieves full scan details)
+   - DELETE `/api/history`  -> `clearHistory` (Purges all stored scans)
+
+5. `utils/scoring.js`
+   - Defines `WELL_KNOWN_HSTS_PRELOADED_DOMAINS` list (google.com, github.com, etc.).
+   - Contains `HEADER_SPECS` array with logic, points, risk messages, and Nginx/Express fix snippets.
+   - Handles HSTS evaluation logic: checks max-age >= 31536000 (1 year), includeSubDomains, and preload lists.
+   - Handles CSP directive parsing: checks for `'unsafe-inline'`, `'unsafe-eval'`, wildcard `*`, nonces, and hashes.
+   - Calculates score percentage mapped to 100 points.
+
+6. `utils/scannerEngine.js`
+   - Implements `isPrivateIp()` using `ipaddr.js` range checking.
+   - Implements `normalizeAndValidateUrl()` to enforce URL safety and prevent SSRF attacks.
+   - Implements `scanTarget()` executing HTTP request, measuring latency, tracking redirect hops, 
+     parsing raw headers & cookies, and returning final structured scan object.
+
+----------------------------------------------------------------------------------------------------
+CLIENT MODULES
+----------------------------------------------------------------------------------------------------
+
+1. `App.jsx`
+   - Main dashboard component managing application navigation tabs (`Live Scanner` vs `Headers Guide`).
+   - Handles JSON report download execution.
+   - Integrates `ScoreGauge`, `SecurityFindings`, `HeaderAccordion`, `RedirectChain`, `Recommendations`, 
+     `CookieTable`, `ScanHistory`, and `KnowledgeBase`.
+
+2. `hooks/useScan.js`
+   - Custom hook managing scan state (`scanResult`, `history`, `loading`, `error`).
+   - Encapsulates async backend API calls (`executeScan`, `selectScan`, `clearScanHistory`, `fetchHistory`).
+
+3. `components/ScoreGauge.jsx`
+   - Visual score presentation using an animated SVG circular progress gauge.
+   - Displays color-coded Grade Badge (Green for A+/A, Emerald for B, Amber for C, Orange for D, Red for F).
+   - Displays scan metadata: target domain, final URL, scanned timestamp, latency duration, and raw header button.
+
+4. `components/HeaderAccordion.jsx`
+   - Collapsible list view for each of the 7 evaluated security headers.
+   - Visual status badges (`PASS`, `WARN`, `MISSING`).
+   - Expandable detailed breakdown containing Header Description, Risk Statement, Recommendation, 
+     and Nginx / Express `CodeFixCard.jsx` code snippets.
+
+5. `components/CookieTable.jsx`
+   - Responsive data table listing scanned cookies.
+   - Displays Cookie Name, Value (`*** REDACTED ***`), Path, SameSite attribute, HttpOnly status, 
+     Secure status, and Risk Level (`SECURE`, `MEDIUM`, `HIGH`).
+
+6. `components/Recommendations.jsx`
+   - Action priority panel listing recommended fixes sorted by security impact score.
+   - Helps site administrators focus on fixing high-severity vulnerabilities first.
+
+7. `components/RedirectChain.jsx`
+   - Visual timeline displaying step-by-step HTTP redirect paths (e.g. `http://domain.com` -> `https://domain.com` -> `https://www.domain.com`).
+   - Displays status code for each hop (301, 302, 200 OK) and response latency.
+
+8. `components/KnowledgeBase.jsx`
+   - Comprehensive interactive security header documentation hub for developers.
+   - Explains standard header syntax, common security risks, and best practices.
+
+
+====================================================================================================
+6. SECURITY EVALUATION MATRIX & SCORING BENCHMARK
+====================================================================================================
+
+HEADER NAME                      MAX PTS   CRITERIA FOR MAX POINTS (PASS)
+----------------------------------------------------------------------------------------------------
+Strict-Transport-Security (HSTS)  20 pts   HTTPS enabled AND (max-age >= 31536000 & includeSubDomains) 
+                                           OR domain is present in HSTS Preload list.
+Content-Security-Policy (CSP)     20 pts   Enforced CSP present without 'unsafe-inline' or '*'.
+X-Content-Type-Options           15 pts   Value set strictly to "nosniff".
+X-Frame-Options                  15 pts   Value set to "DENY" or "SAMEORIGIN" (or CSP frame-ancestors).
+Referrer-Policy                  10 pts   Set to "strict-origin-when-cross-origin", "same-origin", 
+                                           "no-referrer", or "strict-origin".
+Permissions-Policy               10 pts   Restricts camera=(), microphone=(), geolocation=().
+Cross-Origin-Opener-Policy (COOP) 10 pts   Set to "same-origin".
+----------------------------------------------------------------------------------------------------
+TOTAL MAXIMUM POINTS             100 pts
+
+
+LETTER GRADE THRESHOLDS:
+- Grade A+ : 95 - 100 Points (Exceptional header security posture)
+- Grade A  : 85 - 94 Points  (Strong overall security)
+- Grade B  : 75 - 84 Points  (Good posture, minor improvements recommended)
+- Grade C  : 60 - 74 Points  (Moderate security gaps present)
+- Grade D  : 45 - 59 Points  (Significant security headers missing)
+- Grade F  : 0  - 44 Points  (Critical security vulnerability / unencrypted HTTP)
+
+
+====================================================================================================
+7. INSTALLATION & OPERATIONAL GUIDE
+====================================================================================================
+
+PREREQUISITES:
+- Node.js (v18.0.0 or higher) installed.
+- npm (v9.0.0 or higher) installed.
+- (Optional) Local MongoDB server running on port 27017 (or MongoDB Atlas URI).
+
+SETUP INSTRUCTIONS:
+
+1. Clone Repository & Install Dependencies:
+   $ npm run install:all
+   (This executes `npm install` in both `server/` and `client/` directories).
+
+2. Configure Environment Variables:
+   Create a `.env` file inside `server/` folder with the following key-value pairs:
+   --------------------------------------------------
+   PORT=5000
+   MONGO_URI=mongodb://127.0.0.1:27017/policyguard_scanner
+   NODE_ENV=development
+   CLIENT_URL=http://localhost:5173
+   OPENAI_API_KEY=your_optional_openai_api_key_here
+   --------------------------------------------------
+
+3. Running the Project:
+   
+   Option A: Start Backend Server Only
+   $ npm run dev:server
+   (Runs on http://localhost:5000)
+
+   Option B: Start Frontend Client Only
+   $ npm run dev:client
+   (Runs on http://localhost:5173)
+
+   Option C: Run Both Server & Client concurrently
+   In Terminal 1: cd server && npm run dev
+   In Terminal 2: cd client && npm run dev
+
+4. Accessing Application:
+   Open browser and navigate to: http://localhost:5173
+
+
+====================================================================================================
+8. REST API SPECIFICATION SUMMARY
+====================================================================================================
+
+1. Health Check
+   - Endpoint : GET /api/health
+   - Response : { "status": "online", "timestamp": "...", "service": "PolicyGuard Engine" }
+
+2. Execute Security Scan
+   - Endpoint : POST /api/scan
+   - Body     : { "url": "https://example.com" }
+   - Rate Limit: 30 requests / 15 minutes per IP
+   - Response : { "success": true, "data": { ...scanResults } }
+
+3. Retrieve Scan History
+   - Endpoint : GET /api/history
+   - Response : { "success": true, "count": 10, "data": [ ...recentScans ] }
+
+4. Fetch Scan Detail by ID
+   - Endpoint : GET /api/scan/:id
+   - Response : { "success": true, "data": { ...scanResult } }
+
+5. Compare Two Domains
+   - Endpoint : GET /api/compare?domainA=github.com&domainB=google.com
+   - Response : { "success": true, "data": { "scanA": { ... }, "scanB": { ... } } }
+
+6. Clear Scan History
+   - Endpoint : DELETE /api/history
+   - Response : { "success": true, "message": "Scan history cleared successfully." }
+
+
+====================================================================================================
+                             END OF PROJECT DOCUMENTATION
+====================================================================================================
