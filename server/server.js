@@ -19,7 +19,13 @@ app.use(cors({
     const clientUrl = process.env.CLIENT_URL;
     const cleanClientUrl = clientUrl ? clientUrl.trim().replace(/\/+$/, '') : null;
     const cleanOrigin = origin ? origin.trim().replace(/\/+$/, '') : null;
-    if (!origin || (cleanClientUrl && cleanOrigin === cleanClientUrl) || /^https?:\/\/localhost(:\d+)?$/.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
+    if (
+      !origin ||
+      (cleanClientUrl && cleanOrigin === cleanClientUrl) ||
+      /^https:\/\/.*\.vercel\.app$/.test(cleanOrigin) ||
+      /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
+      /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
+    ) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
